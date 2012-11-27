@@ -3,7 +3,7 @@
  Plugin Name: Simple Latest Posts Widget
  Plugin URI: http://konstruktors.com
  Description: Use drag-and-drop interface to show, hide and re-order elements that are displayed in the latest posts widget
- Version: 0.1
+ Version: 0.2
  Author: Kaspars Dambis
  Author URI: http://konstruktors.com
  Text Domain: mn-slap
@@ -53,17 +53,17 @@ class mn_latest_posts extends WP_Widget {
  				);
 
 		$post_types = get_post_types( array( 'public' => true ), 'objects' );
-
 		$cpt_dropdown = array();
 
 		if ( ! empty( $post_types ) )
 			foreach ( $post_types as $id => $post_type )
 				$cpt_dropdown[] = sprintf( 
-							'<option value="%s"%s>%s</option>', 
+							'<option value="%s" %s>%s</option>', 
 							$id, 
 							selected( $id, $instance['post_type'], false ), 
 							$post_type->label 
 						);
+
 
 		if ( ! empty( $cpt_dropdown ) )
 			$return[] = sprintf( 
@@ -74,6 +74,29 @@ class mn_latest_posts extends WP_Widget {
 						$this->get_field_name( 'post_type' ), 
 						implode( '', $cpt_dropdown ) 
 					);
+
+		$taxonomies = get_taxonomies( array( 'public' => true ) );
+		$term_select = array();
+
+		foreach ( $taxonomies as $taxonomy )
+			foreach ( get_terms( $taxonomy ) as $term )
+				$term_select[ $taxonomy ][] = sprintf( 
+						'<li><label><input type="checkbox" name="%s" value="1" %s /> %s</label></li>',
+						$this->get_field_name( 'term' ) . sprintf( '[%s][%s]', $taxonomy, $term->term_id ),
+						checked( $instance['term'][$taxonomy][$term->term_id], 1, false ),
+						esc_html( $term->name )
+					);
+
+		if ( ! empty( $term_select ) )
+			foreach ( $term_select as $tax_id => $term )
+				$return[] = sprintf( 
+						'<h4>%s</h4>
+						<ul class="terms">
+							%s
+						</ul>', 
+						sprintf( 'Post in: %s', esc_html( get_taxonomy( $tax_id )->label ) ), 
+						implode( '', $term_select[$tax_id] ) 
+					);		
 
 		$return[] = sprintf( 
 						'<p>
@@ -225,9 +248,20 @@ class mn_latest_posts extends WP_Widget {
 
 		// Get the correct item order
 		$order_default = array( 'show_title', 'show_thumbnail', 'show_content', 'show_link' );
-		$order_sorted = array_flip( array_intersect( array_keys( $instance ), $order_default ) );	
+		$order_sorted = array_flip( array_intersect( array_keys( $instance ), $order_default ) );
+		$tax_query = array( 'relation' => 'OR' );
+		
+		if ( ! empty( $instance['term'] ) )
+			foreach ( $instance['term'] as $taxonomy => $terms )
+				$tax_query[] = array( 'taxonomy' => $taxonomy, 'terms' => array_keys( $terms ) );
 
-		$posts = query_posts( array( 'post_type' => $post_type, 'posts_per_page' => $post_count ) );
+		$posts = query_posts( array( 
+				'post_type' => $post_type, 
+				'posts_per_page' => $post_count, 
+				'tax_query' => $tax_query, 
+				'field' => 'ID' 
+			) );
+		
 		$post_items = array();
 
 		while ( have_posts() ) : the_post();
@@ -247,9 +281,9 @@ class mn_latest_posts extends WP_Widget {
 
 			if ( $show_content )
 				if ( has_excerpt() && $content_type == 'excerpt' )
-					$item['show_content'] = sprintf( '<div class="entry-content">%s</div>', get_the_excerpt() );
+					$item['show_content'] = sprintf( '<div class="entry-content">%s</div>', apply_filters( 'the_content', get_the_excerpt() ) );
 				else
-					$item['show_content'] = sprintf( '<div class="entry-content">%s</div>', get_the_content() );
+					$item['show_content'] = sprintf( '<div class="entry-content">%s</div>', apply_filters( 'the_content', get_the_excerpt() ) );
 
 			if ( $show_link )
 				if ( ! empty( $show_link_text ) )
